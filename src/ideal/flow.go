@@ -3,6 +3,7 @@ package main
 // define data types
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -10,7 +11,7 @@ import (
 type SortedFlows []*Flow
 
 func (sf SortedFlows) Len() int {
-	return sf.Len()
+	return len(sf)
 }
 
 func (sf SortedFlows) Less(i, j int) bool {
@@ -30,8 +31,32 @@ type Flow struct {
 	Dest          uint8
 	End           float64
 	TimeRemaining float64
+	OracleFct     float64
 	LastTime      float64
 	FinishEvent   *Event
+}
+
+func flowToString(f *Flow) {
+	fmt.Printf("%d %d %d %f %f %f\n", f.Source, f.Dest, f.Size, f.Start, f.OracleFct, f.End)
+}
+
+func calculateFlowSlowdown(f *Flow) float64 {
+	if f.End < f.Start {
+		panic("flow has negative fct")
+	}
+
+	fct := f.End - f.Start
+	slowdown := fct / f.OracleFct
+	switch {
+	case slowdown >= 1:
+		return slowdown
+	case slowdown < 0.999:
+		flowToString(f)
+		fmt.Println(slowdown)
+		panic("flow has fct better than oracle")
+	default:
+		return 1.000000
+	}
 }
 
 func makeFlow(l string) *Flow {

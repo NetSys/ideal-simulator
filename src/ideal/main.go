@@ -35,5 +35,13 @@ func main() {
 		eventQueue = append(eventQueue, makeArrivalEvent(flow))
 	}
 
-	ideal(eventQueue, bw)
+	flows := ideal(eventQueue, bw)
+	numFlows := len(flows)
+
+	slowdown := 0.0
+	for i := 0; i < numFlows; i++ {
+		slowdown += calculateFlowSlowdown(flows[i])
+	}
+
+	fmt.Println(slowdown / float64(numFlows))
 }

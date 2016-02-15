@@ -27,5 +27,7 @@ Running
 The simulator takes the following arguments: 
 
 1. A list of flows to simulate. This is a file with the following format: 
-   "<id (ignored)> <size, bytes> <source> <destination> <start time, microseconds>"
+
+   "[id (ignored)] [size, bytes] [source] [destination] [start time, microseconds]"
+
 2. Bandwidth in gigabits

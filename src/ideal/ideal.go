@@ -6,6 +6,13 @@ import (
 	"sort"
 )
 
+const (
+	NUM_HOSTS                    = 144
+	IN_RACK_PROPAGATION_DELAY    = 0.440 // microseconds
+	INTER_RACK_PROPAGATION_DELAY = 2.040 // microseconds
+	HOSTS_IN_RACK                = 16
+)
+
 func removeFromActiveFlows(ls *list.List, f *Flow) {
 	for e := ls.Front(); e != nil; e = e.Next() {
 		if e.Value.(*Flow) == f {
@@ -17,14 +24,29 @@ func removeFromActiveFlows(ls *list.List, f *Flow) {
 
 func getOracleFCT(flow *Flow, bw float64) float64 {
 	var td, pd float64
-	if same_rack := flow.Source/16 == flow.Dest/16; same_rack {
-		pd = 0.440
+	if same_rack := flow.Source/HOSTS_IN_RACK == flow.Dest/HOSTS_IN_RACK; same_rack {
+		pd = IN_RACK_PROPAGATION_DELAY
 	} else {
-		pd = 2.040
+		pd = INTER_RACK_PROPAGATION_DELAY
 	}
 
-	td = float64(flow.Size) / (bw * 10e9 / 8)
+	td = (float64(flow.Size) / (bw * 1e9 / 8)) * 1e6
 	return pd + td
+}
+
+// input: linked list of flows
+// output: sorted slice of flows, number of flows
+func getSortedFlows(actives *list.List) (SortedFlows, int) {
+	sortedFlows := make(SortedFlows, actives.Len())
+
+	i := 0
+	for e := actives.Front(); e != nil; e = e.Next() {
+		sortedFlows[i] = e.Value.(*Flow)
+		i++
+	}
+
+	sort.Sort(sortedFlows)
+	return sortedFlows, len(sortedFlows)
 }
 
 func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
@@ -32,8 +54,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 
 	activeFlows := list.New()
 	completedFlows := make([]*Flow, 0)
-	var srcPorts [144]*Flow
-	var dstPorts [144]*Flow
+	var srcPorts [NUM_HOSTS]*Flow
+	var dstPorts [NUM_HOSTS]*Flow
 	var currentTime float64
 
 	for len(eventQueue) > 0 {
@@ -42,26 +64,33 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			continue
 		}
 
+		if ev.Time < currentTime {
+			panic("going backwards!")
+		}
+
 		currentTime = ev.Time
+
 		flow := ev.Flow
 
 		if ev.Type == FlowArrival {
 			flow.TimeRemaining = getOracleFCT(flow, bandwidth)
+			flow.OracleFct = flow.TimeRemaining
 			activeFlows.PushBack(flow)
 		} else {
 			// FlowCompletion
+			flow.End = currentTime
 			removeFromActiveFlows(activeFlows, flow)
 			completedFlows = append(completedFlows, flow)
 		}
 
-		for i := 0; i < 144; i++ {
+		for i := 0; i < len(srcPorts); i++ {
 			if srcPorts[i] != nil {
 				inProgressFlow := srcPorts[i]
 				if inProgressFlow.LastTime == 0 {
 					panic("flow in progress without LastTime set")
 				}
 
-				inProgressFlow.TimeRemaining = (currentTime - inProgressFlow.LastTime)
+				inProgressFlow.TimeRemaining -= (currentTime - inProgressFlow.LastTime)
 				inProgressFlow.LastTime = 0
 
 				if inProgressFlow.FinishEvent == nil {
@@ -74,19 +103,10 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			dstPorts[i] = nil
 		}
 
-		numActiveFlows := activeFlows.Len()
-		activeFlowsSlice := make(SortedFlows, numActiveFlows)
-
-		i := 0
-		for e := activeFlows.Front(); e != nil; e = e.Next() {
-			activeFlowsSlice[i] = e.Value.(*Flow)
-			i++
-		}
-
-		sort.Sort(activeFlowsSlice)
+		sortedActiveFlows, numActiveFlows := getSortedFlows(activeFlows)
 
 		for i := 0; i < numActiveFlows; i++ {
-			f := activeFlowsSlice[i]
+			f := sortedActiveFlows[i]
 			src := f.Source
 			dst := f.Dest
 			if srcPorts[src] == nil && dstPorts[dst] == nil {
@@ -100,7 +120,7 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 				}
 
 				f.FinishEvent = makeCompletionEvent(currentTime+f.TimeRemaining, f)
-				eventQueue = append(eventQueue, f.FinishEvent)
+				heap.Push(&eventQueue, f.FinishEvent)
 			}
 		}
 	}
