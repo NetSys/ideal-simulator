@@ -8,7 +8,7 @@ This is an algorithm that:
 
 This gives at least a 2-approximation of the optimal average FCT, which is [NP-hard to compute](http://dl.acm.org/citation.cfm?doid=378420.378792).
 
-The following is run whenever either (a) a new flow enters the network or (b) a flow finishes.
+The following, the pFabric ideal algorithm, is run whenever either (a) a new flow enters the network or (b) a flow finishes.
 
 Input: List of active flows, F: (source, destination, size).
 Output: Set of flows, S, that are scheduled in this iteration.
@@ -20,6 +20,10 @@ Output: Set of flows, S, that are scheduled in this iteration.
         if f.source and f.destination are not busy:
             add f to S
             mark f.source and f.destination as busy
+
+We make an improvement in our implementation. When a flow arrives in the network, only its source is marked as busy. After one propagation delay, the destination is also marked as busy. Similarly, once a flow transmits its last byte, its source is immediately made available to schedule another flow, while its destination remains marked busy until the last byte arrives.
+
+This improvement prevents the wastage of a propagation delay amount of time at the source and destination at the end and beginning of a flow, respectively.
 
 Running
 -------

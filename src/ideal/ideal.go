@@ -22,7 +22,7 @@ func removeFromActiveFlows(ls *list.List, f *Flow) {
 	}
 }
 
-func getOracleFCT(flow *Flow, bw float64) float64 {
+func getOracleFCT(flow *Flow, bw float64) (float64, float64) {
 	var td, pd float64
 	if same_rack := flow.Source/HOSTS_IN_RACK == flow.Dest/HOSTS_IN_RACK; same_rack {
 		pd = IN_RACK_PROPAGATION_DELAY
@@ -31,7 +31,7 @@ func getOracleFCT(flow *Flow, bw float64) float64 {
 	}
 
 	td = (float64(flow.Size) / (bw * 1e9 / 8)) * 1e6
-	return pd + td
+	return pd, td
 }
 
 // input: linked list of flows
@@ -49,6 +49,8 @@ func getSortedFlows(actives *list.List) (SortedFlows, int) {
 	return sortedFlows, len(sortedFlows)
 }
 
+// input: eventQueue of FlowArrival events, topology bandwidth (to determine oracle FCT)
+// output: slice of pointers to completed Flows
 func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 	heap.Init(&eventQueue)
 
@@ -69,35 +71,49 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 		}
 
 		currentTime = ev.Time
-
 		flow := ev.Flow
 
-		if ev.Type == FlowArrival {
-			flow.TimeRemaining = getOracleFCT(flow, bandwidth)
-			flow.OracleFct = flow.TimeRemaining
+		switch ev.Type {
+		case FlowArrival:
+			prop_delay, trans_delay := getOracleFCT(flow, bandwidth)
+			flow.TimeRemaining = trans_delay
+			flow.OracleFct = prop_delay + trans_delay
+			flow.PropDelay = prop_delay
 			activeFlows.PushBack(flow)
-		} else {
-			// FlowCompletion
-			flow.End = currentTime
+		case FlowSourceFree:
 			removeFromActiveFlows(activeFlows, flow)
+			flow.FinishSending = true
+			flow.FinishEvent = makeCompletionEvent(currentTime+flow.PropDelay, flow, FlowDestFree)
+			heap.Push(&eventQueue, flow.FinishEvent)
+		case FlowDestFree:
+			if !flow.FinishSending {
+				panic("finish without finishSending")
+			}
+
+			flow.End = currentTime
+			flow.Finish = true
 			completedFlows = append(completedFlows, flow)
 		}
 
 		for i := 0; i < len(srcPorts); i++ {
 			if srcPorts[i] != nil {
 				inProgressFlow := srcPorts[i]
+
 				if inProgressFlow.LastTime == 0 {
 					panic("flow in progress without LastTime set")
+				}
+
+				if inProgressFlow.FinishEvent == nil {
+					panic("flow in progress without FinishEvent set")
 				}
 
 				inProgressFlow.TimeRemaining -= (currentTime - inProgressFlow.LastTime)
 				inProgressFlow.LastTime = 0
 
-				if inProgressFlow.FinishEvent == nil {
-					panic("flow in progress without FinishEvent set")
+				if !inProgressFlow.FinishSending {
+					inProgressFlow.FinishEvent.Cancelled = true
+					inProgressFlow.FinishEvent = nil
 				}
-				inProgressFlow.FinishEvent.Cancelled = true
-				inProgressFlow.FinishEvent = nil
 			}
 			srcPorts[i] = nil
 			dstPorts[i] = nil
@@ -109,6 +125,20 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			f := sortedActiveFlows[i]
 			src := f.Source
 			dst := f.Dest
+
+			if f.FinishSending {
+				if f.Finish {
+					panic("finished flow in actives")
+				}
+
+				if srcPorts[src] != nil || dstPorts[dst] != nil {
+					panic("ports taken on still sending flow")
+				}
+
+				dstPorts[dst] = f
+				continue
+			}
+
 			if srcPorts[src] == nil && dstPorts[dst] == nil {
 				//this flow gets scheduled.
 				f.LastTime = currentTime
@@ -119,7 +149,7 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 					panic("flow being scheduled, finish event non-nil")
 				}
 
-				f.FinishEvent = makeCompletionEvent(currentTime+f.TimeRemaining, f)
+				f.FinishEvent = makeCompletionEvent(currentTime+f.TimeRemaining, f, FlowSourceFree)
 				heap.Push(&eventQueue, f.FinishEvent)
 			}
 		}

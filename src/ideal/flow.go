@@ -34,6 +34,9 @@ type Flow struct {
 	OracleFct     float64
 	LastTime      float64
 	FinishEvent   *Event
+	PropDelay     float64
+	FinishSending bool
+	Finish        bool
 }
 
 func flowToString(f *Flow) {
@@ -78,7 +81,8 @@ type EventType int
 
 const (
 	FlowArrival EventType = iota
-	FlowCompletion
+	FlowSourceFree
+	FlowDestFree
 )
 
 type Event struct {
@@ -92,8 +96,8 @@ func makeArrivalEvent(f *Flow) *Event {
 	return &Event{Time: f.Start, Flow: f, Type: FlowArrival, Cancelled: false}
 }
 
-func makeCompletionEvent(t float64, f *Flow) *Event {
-	return &Event{Time: t, Flow: f, Type: FlowCompletion, Cancelled: false}
+func makeCompletionEvent(t float64, f *Flow, ty EventType) *Event {
+	return &Event{Time: t, Flow: f, Type: ty, Cancelled: false}
 }
 
 type EventQueue []*Event
