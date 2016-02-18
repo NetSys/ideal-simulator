@@ -34,4 +34,6 @@ The simulator takes the following arguments:
 
    "[id (ignored)] [size, bytes] [source] [destination] [start time, microseconds]"
 
+   The source and destination fields are currently hardcoded to correspond to a 144-host topology with 9 racks of 16 nodes each. In-rack propagation delay is set to be 440 ns, and inter-rack propagation delay is set to be 2040 ns.
+
 2. Bandwidth in gigabits
