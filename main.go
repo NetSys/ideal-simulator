@@ -22,7 +22,7 @@ func main() {
 	bw, err := strconv.ParseFloat(args[1], 64)
 	check(err)
 
-	fmt.Println(fn + ": " + strconv.FormatFloat(bw, 'f', -1, 64))
+	fmt.Println(fn, ":", bw)
 
 	file, err := os.Open(fn)
 	check(err)
