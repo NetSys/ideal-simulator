@@ -3,6 +3,7 @@ package main
 import (
 	"container/heap"
 	"container/list"
+	"fmt"
 	"sort"
 )
 
@@ -49,6 +50,15 @@ func getSortedFlows(actives *list.List) (SortedFlows, int) {
 	return sortedFlows, len(sortedFlows)
 }
 
+func trackBacklog(times chan float64, bytes chan int) {
+	backlog := 0
+	for b := range bytes {
+		t := <-times
+		backlog += b
+		fmt.Printf("backlog %6.3f %d\n", t, backlog)
+	}
+}
+
 // input: eventQueue of FlowArrival events, topology bandwidth (to determine oracle FCT)
 // output: slice of pointers to completed Flows
 func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
@@ -59,6 +69,10 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 	var srcPorts [NUM_HOSTS]*Flow
 	var dstPorts [NUM_HOSTS]*Flow
 	var currentTime float64
+
+	timesC := make(chan float64, 1000)
+	backlogC := make(chan int, 1000)
+	go trackBacklog(timesC, backlogC)
 
 	for len(eventQueue) > 0 {
 		ev := heap.Pop(&eventQueue).(*Event)
@@ -75,6 +89,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 
 		switch ev.Type {
 		case FlowArrival:
+			backlogC <- int(flow.Size)
+			timesC <- currentTime
 			prop_delay, trans_delay := getOracleFCT(flow, bandwidth)
 			flow.TimeRemaining = trans_delay
 			flow.OracleFct = prop_delay + trans_delay
@@ -86,6 +102,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			flow.FinishEvent = makeCompletionEvent(currentTime+flow.PropDelay, flow, FlowDestFree)
 			heap.Push(&eventQueue, flow.FinishEvent)
 		case FlowDestFree:
+			backlogC <- (-1 * int(flow.Size))
+			timesC <- currentTime
 			if !flow.FinishSending {
 				panic("finish without finishSending")
 			}
@@ -154,6 +172,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			}
 		}
 	}
+
+	close(backlogC)
 
 	return completedFlows
 }

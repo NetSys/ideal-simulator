@@ -26,7 +26,7 @@ func (sf SortedFlows) Swap(i, j int) {
 
 type Flow struct {
 	Start         float64
-	Size          uint32
+	Size          uint
 	Source        uint8
 	Dest          uint8
 	End           float64
@@ -74,7 +74,7 @@ func makeFlow(l string) *Flow {
 	time, err := strconv.ParseFloat(sp[4], 64)
 	check(err)
 
-	return &Flow{Start: time, Size: uint32(size), Source: uint8(src), Dest: uint8(dst), LastTime: 0, FinishEvent: nil}
+	return &Flow{Start: time, Size: uint(size), Source: uint8(src), Dest: uint8(dst), LastTime: 0, FinishEvent: nil}
 }
 
 type EventType int
