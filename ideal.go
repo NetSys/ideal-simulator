@@ -55,7 +55,7 @@ func trackBacklog(times chan float64, bytes chan int) {
 	for b := range bytes {
 		t := <-times
 		backlog += b
-		fmt.Printf("backlog %6.3f %d\n", t, backlog)
+		fmt.Printf("backlog %6.3f %d %d\n", t, b, backlog)
 	}
 }
 
@@ -70,8 +70,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 	var dstPorts [NUM_HOSTS]*Flow
 	var currentTime float64
 
-	timesC := make(chan float64, 1000)
-	backlogC := make(chan int, 1000)
+	timesC := make(chan float64)
+	backlogC := make(chan int)
 	go trackBacklog(timesC, backlogC)
 
 	for len(eventQueue) > 0 {
