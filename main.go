@@ -4,10 +4,8 @@ package main
 // initialize objects
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 )
 
 func check(e error) {
@@ -16,32 +14,44 @@ func check(e error) {
 	}
 }
 
+// wait for all threads to finish
+func shutdown(chans ...(chan int)) {
+	for i := 0; i < len(chans); i++ {
+		<-chans[i]
+	}
+}
+
 func main() {
 	args := os.Args[1:]
-	fn := args[0]
-	bw, err := strconv.ParseFloat(args[1], 64)
-	check(err)
+	conf := readConf(args[0])
 
-	fmt.Println(fn, ":", bw)
-
-	file, err := os.Open(fn)
-	check(err)
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	eventQueue := make(EventQueue, 0)
-	for scanner.Scan() {
-		flow := makeFlow(scanner.Text())
-		eventQueue = append(eventQueue, makeArrivalEvent(flow))
+	var eventQueue EventQueue
+	var genQuit chan int
+	switch {
+	case conf.Read:
+		fr := makeFlowReader(conf.TraceFileName)
+		eventQueue = fr.makeFlows()
+	case conf.GenerateOnly:
+		fallthrough
+	case conf.Generate:
+		fg := makeFlowGenerator(conf.Load, conf.Bandwidth, conf.CDFFileName, conf.NumFlows)
+		eventQueue, genQuit = fg.makeFlows()
+	default:
+		panic("Invalid configuration")
 	}
 
-	flows := ideal(eventQueue, bw)
-	numFlows := len(flows)
+	if !conf.GenerateOnly {
+		flows, idQuit := ideal(eventQueue, conf.Bandwidth)
+		numFlows := len(flows)
 
-	slowdown := 0.0
-	for i := 0; i < numFlows; i++ {
-		slowdown += calculateFlowSlowdown(flows[i])
+		slowdown := 0.0
+		for i := 0; i < numFlows; i++ {
+			slowdown += calculateFlowSlowdown(flows[i])
+		}
+
+		shutdown(genQuit, idQuit)
+		fmt.Println(slowdown / float64(numFlows))
+	} else {
+		shutdown(genQuit)
 	}
-
-	fmt.Println(slowdown / float64(numFlows))
 }

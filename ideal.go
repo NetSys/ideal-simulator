@@ -1,5 +1,7 @@
 package main
 
+// run ideal event loop until completion.
+
 import (
 	"container/heap"
 	"container/list"
@@ -37,7 +39,7 @@ func getOracleFCT(flow *Flow, bw float64) (float64, float64) {
 
 // input: linked list of flows
 // output: sorted slice of flows, number of flows
-func getSortedFlows(actives *list.List) (SortedFlows, int) {
+func getSortedFlows(actives *list.List) SortedFlows {
 	sortedFlows := make(SortedFlows, actives.Len())
 
 	i := 0
@@ -47,21 +49,22 @@ func getSortedFlows(actives *list.List) (SortedFlows, int) {
 	}
 
 	sort.Sort(sortedFlows)
-	return sortedFlows, len(sortedFlows)
+	return sortedFlows
 }
 
-func trackBacklog(times chan float64, bytes chan int) {
+func trackBacklog(times chan float64, bytes chan int, quit chan int) {
 	backlog := 0
 	for b := range bytes {
 		t := <-times
 		backlog += b
 		fmt.Printf("backlog %6.3f %d %d\n", t, b, backlog)
 	}
+	quit <- 0
 }
 
 // input: eventQueue of FlowArrival events, topology bandwidth (to determine oracle FCT)
 // output: slice of pointers to completed Flows
-func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
+func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 	heap.Init(&eventQueue)
 
 	activeFlows := list.New()
@@ -72,7 +75,9 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 
 	timesC := make(chan float64)
 	backlogC := make(chan int)
-	go trackBacklog(timesC, backlogC)
+	quit := make(chan int)
+	defer close(backlogC)
+	go trackBacklog(timesC, backlogC, quit)
 
 	for len(eventQueue) > 0 {
 		ev := heap.Pop(&eventQueue).(*Event)
@@ -137,7 +142,8 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 			dstPorts[i] = nil
 		}
 
-		sortedActiveFlows, numActiveFlows := getSortedFlows(activeFlows)
+		sortedActiveFlows := getSortedFlows(activeFlows)
+		numActiveFlows := len(sortedActiveFlows)
 
 		for i := 0; i < numActiveFlows; i++ {
 			f := sortedActiveFlows[i]
@@ -173,7 +179,5 @@ func ideal(eventQueue EventQueue, bandwidth float64) []*Flow {
 		}
 	}
 
-	close(backlogC)
-
-	return completedFlows
+	return completedFlows, quit
 }
