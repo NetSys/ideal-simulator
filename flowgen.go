@@ -112,15 +112,17 @@ func makeCreationEvent(f *Flow) *Event {
 }
 
 func printFlow(fs chan *Flow, quit chan int) {
+	i := 0
 	for f := range fs {
-		fmt.Printf("0 %d %d %d %f\n", f.Size, f.Source, f.Dest, f.Start)
+		fmt.Printf("%d %d %d %d %f\n", i, f.Size, f.Source, f.Dest, f.Start)
+		i++
 	}
 	quit <- 0
 }
 
 func (fg FlowGenerator) makeFlows() (EventQueue, chan int) {
-	lambda := (fg.bandwidth * 1e9 * fg.load / (fg.cdf.meanFlowSize() * 8.0 / 1460 * 1500)) / (NUM_HOSTS - 1)
-	lambda = 1.0 / lambda
+	lambda := (fg.bandwidth * 1e9 * fg.load) / (fg.cdf.meanFlowSize() * 1500 * 8)
+	lambda /= 143
 
 	creationQueue := make(EventQueue, 0)
 	defer func() {
