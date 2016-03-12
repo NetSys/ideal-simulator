@@ -1,7 +1,8 @@
 Flow-level simulator for the "ideal" algorithm outlined by [pfabric](http://conferences.sigcomm.org/sigcomm/2013/papers/sigcomm/p435.pdf). 
 
 Algorithm
----------
+=========
+
 This is an algorithm that:
     1. simulates the network topology as a "big switch".
     2. greedily schedules flows in SRPT (shortest remaining processing time) order
@@ -26,14 +27,66 @@ We make an improvement in our implementation. When a flow arrives in the network
 This improvement prevents the wastage of a propagation delay amount of time at the source and destination at the end and beginning of a flow, respectively.
 
 Running
--------
+=======
 
-The simulator takes the following arguments: 
+The simulator takes one argument, the path to a configuration file. The configuration file consists of lines, each of which must be either a parameter definition or a switch. The format of the two types of lines follows.
 
-1. A list of flows to simulate. This is a file with the following format: 
+Switch: ```[Switch Name]```
 
-   "[id (ignored)] [size, bytes] [source] [destination] [start time, microseconds]"
+Parameter definition: ```[Field Name] [Value]```
+
+A list of valid parameters to define and switches to use follows.
+
+Switches
+--------
+
+Note that for each switch, no parameter other than the required parameter for that switch should be defined.
+
+- "Read": Read flows from a trace file and run the ideal algorithm. The parameters "Bandwidth" and "TraceFile" must be defined. 
+- "Generate": Generate flows using a Poisson arrival process and run the ideal algorithm. The parameters "Bandwidth", "Load", "NumFlows", and "CDF" must be defined. 
+- "GenerateOnly": Generate flows using a Poisson arrival process and exit. The parameters are the same as in "Generate".
+
+Parameters
+----------
+
+- "TraceFile": The path to a file containing the list of flows to simulate. This file should have the following format: 
+
+   ```[id (ignored)] [size (bytes)] [source] [destination] [start time (microseconds)]```
 
    The source and destination fields are currently hardcoded to correspond to a 144-host topology with 9 racks of 16 nodes each. In-rack propagation delay is set to be 440 ns, and inter-rack propagation delay is set to be 2040 ns.
 
-2. Bandwidth in gigabits
+- "Bandwidth": Topology bandwidth in gigabits. Note that this parameter is required for all experiments.
+- "NumFlows": The number of flows to generate for simulation.
+- "Load": The target load at which flows should be generated.
+- "CDF": The path to a CDF file defining the flow size distribution with which to generate flows. This file should have the following format: 
+
+   ```[Flow Size (packets)] <ignored> [CDF Value]```
+
+Example Configuration
+---------------------
+
+Configuration file:
+```
+Bandwidth 40
+GenerateOnly
+Load 0.9
+NumFlows 1000000
+CDF imc10.cdf
+```
+
+CDF File (imc10.cdf above):
+```
+1 1 0
+1 1 0.500000
+2 1 0.600000
+3 1 0.700000
+5 1 0.750000
+7 1 0.800000
+40 1 0.812500
+72 1 0.825000
+137 1 0.850000
+267 1 0.900000
+1187 1 0.95000
+2107 1 1.0
+```
+
