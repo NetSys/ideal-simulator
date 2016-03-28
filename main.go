@@ -40,7 +40,7 @@ func main() {
 		panic("Invalid configuration")
 	}
 
-	if !conf.GenerateOnly {
+	if conf.Generate || conf.Read {
 		flows, idQuit := ideal(eventQueue, conf.Bandwidth)
 		numFlows := len(flows)
 
@@ -49,9 +49,16 @@ func main() {
 			slowdown += calculateFlowSlowdown(flows[i])
 		}
 
-		shutdown(genQuit, idQuit)
+		if conf.Generate {
+			shutdown(genQuit, idQuit)
+		} else {
+			shutdown(idQuit)
+		}
+
 		fmt.Println(slowdown / float64(numFlows))
-	} else {
+	} else if conf.GenerateOnly {
 		shutdown(genQuit)
+	} else {
+		panic("Unknown mode")
 	}
 }
