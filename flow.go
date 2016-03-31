@@ -48,7 +48,7 @@ func calculateFlowSlowdown(f *Flow) float64 {
 		panic("flow has negative fct")
 	}
 
-	fct := f.End - f.Start
+	fct := (f.End - f.Start) + f.PropDelay
 	slowdown := fct / f.OracleFct
 	switch {
 	case slowdown >= 1:
