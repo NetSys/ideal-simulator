@@ -14,51 +14,42 @@ func check(e error) {
 	}
 }
 
-// wait for all threads to finish
-func shutdown(chans ...(chan int)) {
-	for i := 0; i < len(chans); i++ {
-		<-chans[i]
-	}
-}
-
 func main() {
 	args := os.Args[1:]
 	conf := readConf(args[0])
 
+	var logger = make(chan LogEvent, 1000)
+	loggingDone := make(chan bool)
+	go log(logger, loggingDone)
+
 	var eventQueue EventQueue
-	var genQuit chan int
 	switch {
 	case conf.Read:
 		fr := makeFlowReader(conf.TraceFileName)
-		eventQueue = fr.makeFlows()
+		eventQueue = fr.makeFlows(logger)
 	case conf.GenerateOnly:
-		fallthrough
+		fg := makeFlowGenerator(conf.Load, conf.Bandwidth, conf.CDFFileName, conf.NumFlows)
+		eventQueue = fg.makeFlows(logger)
+		close(logger)
+		<-loggingDone
+		return
 	case conf.Generate:
 		fg := makeFlowGenerator(conf.Load, conf.Bandwidth, conf.CDFFileName, conf.NumFlows)
-		eventQueue, genQuit = fg.makeFlows()
+		eventQueue = fg.makeFlows(logger)
 	default:
 		panic("Invalid configuration")
 	}
 
-	if conf.Generate || conf.Read {
-		flows, idQuit := ideal(eventQueue, conf.Bandwidth)
-		numFlows := len(flows)
+	flows := ideal(conf.Bandwidth, logger, eventQueue)
 
-		slowdown := 0.0
-		for i := 0; i < numFlows; i++ {
-			slowdown += calculateFlowSlowdown(flows[i])
-		}
+	close(logger)
+	<-loggingDone
 
-		if conf.Generate {
-			shutdown(genQuit, idQuit)
-		} else {
-			shutdown(idQuit)
-		}
+	numFlows := len(flows)
 
-		fmt.Println(slowdown / float64(numFlows))
-	} else if conf.GenerateOnly {
-		shutdown(genQuit)
-	} else {
-		panic("Unknown mode")
+	slowdown := 0.0
+	for i := 0; i < numFlows; i++ {
+		slowdown += calculateFlowSlowdown(flows[i])
 	}
+	fmt.Println(slowdown / float64(numFlows))
 }

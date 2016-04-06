@@ -39,8 +39,8 @@ type Flow struct {
 	Finish        bool
 }
 
-func flowToString(f *Flow) {
-	fmt.Printf("%d %d %d %f %f %f\n", f.Source, f.Dest, f.Size, f.Start, f.OracleFct, f.End)
+func flowToString(f *Flow) string {
+	return fmt.Sprintf("%d %d %d %f %f %f %f %f %f\n", f.Source, f.Dest, f.Size, f.Start, f.OracleFct, f.End, f.End-f.Start, calculateFlowSlowdown(f), f.PropDelay)
 }
 
 func calculateFlowSlowdown(f *Flow) float64 {
@@ -48,14 +48,12 @@ func calculateFlowSlowdown(f *Flow) float64 {
 		panic("flow has negative fct")
 	}
 
-	fct := (f.End - f.Start) + f.PropDelay
+	fct := (f.End - f.Start) + PROPAGATION_DELAY
 	slowdown := fct / f.OracleFct
 	switch {
 	case slowdown >= 1:
 		return slowdown
 	case slowdown < 0.999:
-		flowToString(f)
-		fmt.Println(slowdown)
 		panic("flow has fct better than oracle")
 	default:
 		return 1.000000

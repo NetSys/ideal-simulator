@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"container/heap"
-	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -22,7 +21,7 @@ func makeFlowReader(fn string) FlowReader {
 	return FlowReader{file: fn}
 }
 
-func (fr FlowReader) makeFlows() EventQueue {
+func (fr FlowReader) makeFlows(logger chan LogEvent) EventQueue {
 	eventQueue := make(EventQueue, 0)
 	file, err := os.Open(fr.file)
 	check(err)
@@ -86,7 +85,6 @@ func (cdf CDF) value() uint {
 	for i := 0; i < len(cdf.values); i++ {
 		if cdf.distrs[i] >= rand {
 			if cdf.values[i] == 0 {
-				fmt.Println(rand)
 				panic("invalid flow size")
 			}
 			return cdf.values[i]
@@ -111,16 +109,7 @@ func makeCreationEvent(f *Flow) *Event {
 	return &Event{Time: f.Start, Flow: f, Type: FlowArrival, Cancelled: false}
 }
 
-func printFlow(fs chan *Flow, quit chan int) {
-	i := 0
-	for f := range fs {
-		fmt.Printf("%d %d %d %d %f\n", i, f.Size, f.Source, f.Dest, f.Start)
-		i++
-	}
-	quit <- 0
-}
-
-func (fg FlowGenerator) makeFlows() (EventQueue, chan int) {
+func (fg FlowGenerator) makeFlows(logger chan LogEvent) EventQueue {
 	lambda := (fg.bandwidth * 1e9 * fg.load) / (fg.cdf.meanFlowSize() * 1500 * 8)
 	lambda /= 143
 
@@ -128,11 +117,6 @@ func (fg FlowGenerator) makeFlows() (EventQueue, chan int) {
 	defer func() {
 		creationQueue = nil
 	}()
-
-	printFlows := make(chan *Flow, 1000)
-	quit := make(chan int)
-	defer close(printFlows)
-	go printFlow(printFlows, quit)
 
 	heap.Init(&creationQueue)
 	for i := 0; i < NUM_HOSTS; i++ {
@@ -148,7 +132,7 @@ func (fg FlowGenerator) makeFlows() (EventQueue, chan int) {
 	eventQueue := make(EventQueue, 0)
 	for uint(len(eventQueue)) < fg.numFlows {
 		ev := heap.Pop(&creationQueue).(*Event)
-		printFlows <- ev.Flow
+		logger <- LogEvent{Time: 0, Type: LOG_FLOW_GEN, Flow: ev.Flow}
 		eventQueue = append(eventQueue, makeArrivalEvent(ev.Flow))
 
 		nextTime := ev.Time + (rand.ExpFloat64()/lambda)*1e6
@@ -156,5 +140,5 @@ func (fg FlowGenerator) makeFlows() (EventQueue, chan int) {
 		heap.Push(&creationQueue, makeCreationEvent(f))
 	}
 
-	return eventQueue, quit
+	return eventQueue
 }

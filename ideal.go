@@ -5,15 +5,13 @@ package main
 import (
 	"container/heap"
 	"container/list"
-	"fmt"
 	"sort"
 )
 
 const (
-	NUM_HOSTS                    = 144
-	IN_RACK_PROPAGATION_DELAY    = 0.440 // microseconds
-	INTER_RACK_PROPAGATION_DELAY = 2.040 // microseconds
-	HOSTS_IN_RACK                = 16
+	NUM_HOSTS         = 144
+	PROPAGATION_DELAY = 0.4 // microseconds
+	HOSTS_IN_RACK     = 16
 )
 
 func removeFromActiveFlows(ls *list.List, f *Flow) {
@@ -26,14 +24,8 @@ func removeFromActiveFlows(ls *list.List, f *Flow) {
 }
 
 func getOracleFCT(flow *Flow, bw float64) (float64, float64) {
-	var td, pd float64
-	if same_rack := flow.Source/HOSTS_IN_RACK == flow.Dest/HOSTS_IN_RACK; same_rack {
-		pd = IN_RACK_PROPAGATION_DELAY
-	} else {
-		pd = INTER_RACK_PROPAGATION_DELAY
-	}
-
-	td = (float64(flow.Size) / (bw * 1e9 / 8)) * 1e6
+	pd := PROPAGATION_DELAY * 4
+	td := (float64(flow.Size) / (bw * 1e9 / 8)) * 1e6 // microseconds
 	return pd, td
 }
 
@@ -52,19 +44,9 @@ func getSortedFlows(actives *list.List) SortedFlows {
 	return sortedFlows
 }
 
-func trackBacklog(times chan float64, bytes chan int, quit chan int) {
-	backlog := 0
-	for b := range bytes {
-		t := <-times
-		backlog += b
-		fmt.Printf("backlog %6.3f %d %d\n", t, b, backlog)
-	}
-	quit <- 0
-}
-
 // input: eventQueue of FlowArrival events, topology bandwidth (to determine oracle FCT)
 // output: slice of pointers to completed Flows
-func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
+func ideal(bandwidth float64, logger chan LogEvent, eventQueue EventQueue) []*Flow {
 	heap.Init(&eventQueue)
 
 	activeFlows := list.New()
@@ -72,12 +54,6 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 	var srcPorts [NUM_HOSTS]*Flow
 	var dstPorts [NUM_HOSTS]*Flow
 	var currentTime float64
-
-	timesC := make(chan float64)
-	backlogC := make(chan int)
-	quit := make(chan int)
-	defer close(backlogC)
-	go trackBacklog(timesC, backlogC, quit)
 
 	for len(eventQueue) > 0 {
 		ev := heap.Pop(&eventQueue).(*Event)
@@ -94,8 +70,7 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 
 		switch ev.Type {
 		case FlowArrival:
-			backlogC <- int(flow.Size)
-			timesC <- currentTime
+			logger <- LogEvent{Time: currentTime, Type: LOG_FLOW_ARRIVAL, Flow: flow}
 			prop_delay, trans_delay := getOracleFCT(flow, bandwidth)
 			flow.TimeRemaining = trans_delay
 			flow.OracleFct = prop_delay + trans_delay
@@ -107,8 +82,6 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 			flow.FinishEvent = makeCompletionEvent(currentTime+flow.PropDelay, flow, FlowDestFree)
 			heap.Push(&eventQueue, flow.FinishEvent)
 		case FlowDestFree:
-			backlogC <- (-1 * int(flow.Size))
-			timesC <- currentTime
 			if !flow.FinishSending {
 				panic("finish without finishSending")
 			}
@@ -116,6 +89,7 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 			flow.End = currentTime
 			flow.Finish = true
 			completedFlows = append(completedFlows, flow)
+			logger <- LogEvent{Time: currentTime, Type: LOG_FLOW_FINISHED, Flow: flow}
 		}
 
 		for i := 0; i < len(srcPorts); i++ {
@@ -143,10 +117,7 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 		}
 
 		sortedActiveFlows := getSortedFlows(activeFlows)
-		numActiveFlows := len(sortedActiveFlows)
-
-		for i := 0; i < numActiveFlows; i++ {
-			f := sortedActiveFlows[i]
+		for _, f := range sortedActiveFlows {
 			src := f.Source
 			dst := f.Dest
 
@@ -179,5 +150,5 @@ func ideal(eventQueue EventQueue, bandwidth float64) ([]*Flow, chan int) {
 		}
 	}
 
-	return completedFlows, quit
+	return completedFlows
 }
