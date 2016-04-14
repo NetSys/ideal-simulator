@@ -34,13 +34,12 @@ type Flow struct {
 	OracleFct     float64
 	LastTime      float64
 	FinishEvent   *Event
-	PropDelay     float64
 	FinishSending bool
 	Finish        bool
 }
 
 func flowToString(f *Flow) string {
-	return fmt.Sprintf("%d %d %d %f %f %f %f %f %f\n", f.Source, f.Dest, f.Size, f.Start, f.OracleFct, f.End, f.End-f.Start, calculateFlowSlowdown(f), f.PropDelay)
+	return fmt.Sprintf("%d %d %d %f %f %f %f %f\n", f.Source, f.Dest, f.Size, f.Start, f.OracleFct, f.End, f.End-f.Start, calculateFlowSlowdown(f))
 }
 
 func calculateFlowSlowdown(f *Flow) float64 {
@@ -48,7 +47,7 @@ func calculateFlowSlowdown(f *Flow) float64 {
 		panic("flow has negative fct")
 	}
 
-	fct := (f.End - f.Start) + PROPAGATION_DELAY
+	fct := (f.End - f.Start)
 	slowdown := fct / f.OracleFct
 	switch {
 	case slowdown >= 1:

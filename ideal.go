@@ -74,19 +74,17 @@ func ideal(bandwidth float64, logger chan LogEvent, eventQueue EventQueue) []*Fl
 			prop_delay, trans_delay := getOracleFCT(flow, bandwidth)
 			flow.TimeRemaining = trans_delay
 			flow.OracleFct = prop_delay + trans_delay
-			flow.PropDelay = prop_delay
 			activeFlows.PushBack(flow)
 		case FlowSourceFree:
-			removeFromActiveFlows(activeFlows, flow)
 			flow.FinishSending = true
-			flow.FinishEvent = makeCompletionEvent(currentTime+flow.PropDelay, flow, FlowDestFree)
+			flow.FinishEvent = makeCompletionEvent(currentTime+2*PROPAGATION_DELAY, flow, FlowDestFree)
 			heap.Push(&eventQueue, flow.FinishEvent)
 		case FlowDestFree:
 			if !flow.FinishSending {
 				panic("finish without finishSending")
 			}
-
-			flow.End = currentTime
+			removeFromActiveFlows(activeFlows, flow)
+			flow.End = currentTime + 2*PROPAGATION_DELAY // send an ACK
 			flow.Finish = true
 			completedFlows = append(completedFlows, flow)
 			logger <- LogEvent{Time: currentTime, Type: LOG_FLOW_FINISHED, Flow: flow}
